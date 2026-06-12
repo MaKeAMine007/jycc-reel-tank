@@ -13,6 +13,7 @@ export async function GET() {
       s.is_jito_member,
       s.submitted_at,
       s.remarks            AS submission_remarks,
+      s.verification_status,
       s.source,
       s.in_latest_csv,
       r.id                 AS reel_id,
@@ -44,6 +45,7 @@ export async function GET() {
     firstSubmittedAt: string;
     firstSubmissionId: string;
     remarks: string;
+    verificationStatus: string;
     source: string;
     inLatestCsv: boolean;
     reelUrls: string[];
@@ -64,6 +66,7 @@ export async function GET() {
         firstSubmittedAt: row.submitted_at,
         firstSubmissionId: row.id,
         remarks: row.submission_remarks ?? "",
+        verificationStatus: row.verification_status ?? "-",
         source: row.source ?? "form",
         inLatestCsv: row.in_latest_csv ?? false,
         reelUrls: [],

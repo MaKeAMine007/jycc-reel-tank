@@ -3,9 +3,6 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 
-const ADMIN_ID = "admin";
-const ADMIN_PASSWORD = "admin123";
-
 export default function AdminLogin() {
   const router = useRouter();
   const [userId, setUserId]     = useState("");
@@ -13,20 +10,28 @@ export default function AdminLogin() {
   const [error, setError]       = useState("");
   const [loading, setLoading]   = useState(false);
 
-  function handleSubmit(e: React.FormEvent) {
+  async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError("");
     setLoading(true);
-
-    setTimeout(() => {
-      if (userId === ADMIN_ID && password === ADMIN_PASSWORD) {
+    try {
+      const res  = await fetch("/api/admin/auth", {
+        method:  "POST",
+        headers: { "Content-Type": "application/json" },
+        body:    JSON.stringify({ id: userId.trim(), password }),
+      });
+      const data = await res.json() as { ok: boolean; error?: string };
+      if (data.ok) {
         localStorage.setItem("adminLoggedIn", "true");
         router.push("/dashboard");
       } else {
-        setError("Invalid User ID or Password.");
+        setError(data.error ?? "Invalid User ID or Password.");
         setLoading(false);
       }
-    }, 400);
+    } catch {
+      setError("Network error. Please try again.");
+      setLoading(false);
+    }
   }
 
   return (

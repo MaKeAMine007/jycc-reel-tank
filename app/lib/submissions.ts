@@ -26,6 +26,7 @@ export interface Creator {
   firstSubmittedAt: string;
   firstSubmissionId: string;
   remarks: string;
+  verificationStatus: string;
   source: string;
   inLatestCsv: boolean;
   reelUrls: string[];

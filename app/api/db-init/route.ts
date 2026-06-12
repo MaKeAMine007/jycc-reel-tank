@@ -43,6 +43,7 @@ export async function GET() {
 
   await sql`ALTER TABLE submissions ADD COLUMN IF NOT EXISTS source TEXT NOT NULL DEFAULT 'form'`;
   await sql`ALTER TABLE submissions ADD COLUMN IF NOT EXISTS in_latest_csv BOOLEAN NOT NULL DEFAULT false`;
+  await sql`ALTER TABLE submissions ADD COLUMN IF NOT EXISTS verification_status TEXT NOT NULL DEFAULT '-'`;
 
   await sql`
     CREATE TABLE IF NOT EXISTS campaign_settings (
@@ -55,6 +56,16 @@ export async function GET() {
     INSERT INTO campaign_settings (id, status, active_week)
     VALUES (1, 'active', 1)
     ON CONFLICT (id) DO NOTHING
+  `;
+
+  await sql`
+    CREATE TABLE IF NOT EXISTS admins (
+      id         UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      admin_id   TEXT NOT NULL UNIQUE,
+      password   TEXT NOT NULL,
+      status     TEXT NOT NULL DEFAULT 'enabled',
+      created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    )
   `;
 
   return Response.json({ ok: true, message: "Schema initialized" });

@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef, Fragment } from "react";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
-import AdminNavbar from "@/app/components/AdminNavbar";
+import SuperAdminNavbar from "@/app/components/SuperAdminNavbar";
 import { type Creator, type ReelResult } from "@/app/lib/submissions";
 import { formatNumber, formatSubmittedAt } from "@/app/lib/formatters";
 import { WEEK_TOPICS } from "@/app/lib/weekTopics";
@@ -61,7 +61,6 @@ function parseNum(v: string): number | null {
 
 function parseDob(v: string): string | null {
   if (!v.trim()) return null;
-  // Normalize separators: 2000/01/01 → 2000-01-01
   return v.trim().replace(/\//g, "-");
 }
 
@@ -140,15 +139,17 @@ function csvField(value: string): string {
   return value;
 }
 
-export default function Dashboard() {
+export default function SuperAdminDashboard() {
   const router = useRouter();
   const [creators, setCreators]             = useState<Creator[]>([]);
   const [reelMarks, setReelMarks]           = useState<Record<string, string>>({});
-  const [creatorRemarks, setCreatorRemarks]                         = useState<Record<string, string>>({});
+  const [creatorRemarks, setCreatorRemarks] = useState<Record<string, string>>({});
   const [creatorVerificationStatus, setCreatorVerificationStatus]   = useState<Record<string, string>>({});
-  const [creatorSaved, setCreatorSaved]                             = useState<Record<string, boolean>>({});
+  const [creatorSaved, setCreatorSaved]     = useState<Record<string, boolean>>({});
   const [openWeeks, setOpenWeeks]           = useState<Record<string, Set<number>>>({});
   const [authed, setAuthed]                 = useState(false);
+  const [deleteTarget, setDeleteTarget]     = useState<{ phone: string; name: string } | null>(null);
+  const [deleteLoading, setDeleteLoading]   = useState(false);
 
   // Import state
   const fileInputRef                             = useRef<HTMLInputElement>(null);
@@ -184,8 +185,8 @@ export default function Dashboard() {
   }
 
   useEffect(() => {
-    if (localStorage.getItem("adminLoggedIn") !== "true") {
-      router.replace("/admin");
+    if (localStorage.getItem("superAdminLoggedIn") !== "true") {
+      router.replace("/superadmin");
       return;
     }
     setAuthed(true);
@@ -324,7 +325,6 @@ export default function Dashboard() {
   async function handleFileSelect(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     if (!file) return;
-    // Reset input so same file can be re-selected
     e.target.value = "";
 
     const text = await file.text();
@@ -336,7 +336,6 @@ export default function Dashboard() {
       return;
     }
 
-    // Validate (phone, week) uniqueness before any DB operation
     const seen = new Set<string>();
     const dupSlots: { phone: string; week: number }[] = [];
     const reported = new Set<string>();
@@ -481,6 +480,20 @@ export default function Dashboard() {
     setTimeout(() => setCreatorSaved((prev) => ({ ...prev, [phone]: false })), 1500);
   }
 
+  async function confirmDelete() {
+    if (!deleteTarget || deleteLoading) return;
+    setDeleteLoading(true);
+    try {
+      await fetch(`/api/creators/${encodeURIComponent(deleteTarget.phone)}`, {
+        method: "DELETE",
+      });
+      setDeleteTarget(null);
+      await reload();
+    } finally {
+      setDeleteLoading(false);
+    }
+  }
+
   if (!authed) return null;
 
   const totalReels = creators.reduce((sum, c) => sum + c.reels.length, 0);
@@ -489,7 +502,7 @@ export default function Dashboard() {
 
   return (
     <div className="min-h-screen bg-gray-50">
-      <AdminNavbar />
+      <SuperAdminNavbar />
 
       <main className="max-w-7xl mx-auto px-6 py-8">
 
@@ -508,6 +521,12 @@ export default function Dashboard() {
               className="text-sm font-medium text-gray-600 border border-gray-300 bg-white rounded-md px-4 py-2 hover:bg-gray-50 transition-colors"
             >
               Open Registration Form
+            </a>
+            <a
+              href="/superadmin/admins"
+              className="text-sm font-medium text-gray-600 border border-gray-300 bg-white rounded-md px-4 py-2 hover:bg-gray-50 transition-colors"
+            >
+              Admin Panel
             </a>
             <a
               href="/campaign"
@@ -567,6 +586,7 @@ export default function Dashboard() {
                     <th className={thClass} style={{ minWidth: "64px" }}>Marks</th>
                     <th className={thClass} style={{ minWidth: "168px" }}>Remarks</th>
                     <th className={thClass} style={{ minWidth: "128px" }}>Status</th>
+                    <th className={thClass}></th>
                     <th className={thClass}></th>
                   </tr>
                 </thead>
@@ -671,6 +691,14 @@ export default function Dashboard() {
                               {creatorSaved[phone] ? "Saved" : "Save"}
                             </button>
                           </td>
+                          <td className="px-4 py-3 whitespace-nowrap">
+                            <button
+                              onClick={() => setDeleteTarget({ phone, name: creator.name })}
+                              className="text-xs font-medium px-3 py-1 rounded border border-red-200 text-red-600 bg-white hover:bg-red-50 transition-colors"
+                            >
+                              Delete
+                            </button>
+                          </td>
                         </tr>
 
                         {/* ── Expanded week sections ───────────────────── */}
@@ -683,7 +711,7 @@ export default function Dashboard() {
                           const wComments    = sumMetric(weekReels, "comments");
                           return (
                             <tr key={`${phone}-w${week}`}>
-                              <td colSpan={14} className="p-0">
+                              <td colSpan={15} className="p-0">
 
                                 {/* Week label */}
                                 <div className="px-6 py-2 bg-gray-50 border-y border-gray-100 flex items-center gap-2 flex-wrap">
@@ -830,6 +858,51 @@ export default function Dashboard() {
         )}
       </main>
 
+      {/* ── Delete confirmation modal ─────────────────────────────────────── */}
+      {deleteTarget && (
+        <div className="fixed inset-0 bg-black/30 flex items-center justify-center z-50 p-4">
+          <div className="bg-white border border-gray-200 rounded-lg shadow-lg w-full max-w-sm">
+            <div className="p-6">
+              <div className="flex items-center gap-2 mb-4">
+                <span className="text-lg">⚠️</span>
+                <h2 className="text-base font-semibold text-gray-900">Confirm Delete</h2>
+              </div>
+              <div className="mb-5 space-y-1 text-sm text-gray-700">
+                <p><span className="font-medium">Creator:</span> {deleteTarget.name}</p>
+                <p><span className="font-medium">Phone:</span> +91 {deleteTarget.phone}</p>
+              </div>
+              <p className="text-sm text-gray-500 mb-6">
+                This will permanently delete the creator and all associated reels and data. This action cannot be undone.
+              </p>
+              <div className="flex justify-end gap-2">
+                <button
+                  onClick={() => setDeleteTarget(null)}
+                  disabled={deleteLoading}
+                  className="text-sm font-medium text-gray-600 border border-gray-300 bg-white rounded-md px-4 py-2 hover:bg-gray-50 transition-colors disabled:opacity-40"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={confirmDelete}
+                  disabled={deleteLoading}
+                  className="text-sm font-medium text-white bg-red-600 border border-red-600 rounded-md px-4 py-2 hover:bg-red-700 transition-colors disabled:opacity-40 flex items-center gap-2"
+                >
+                  {deleteLoading ? (
+                    <>
+                      <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24" fill="none">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                      </svg>
+                      Deleting…
+                    </>
+                  ) : "Confirm Delete"}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* ── Import preview modal ───────────────────────────────────────────── */}
       {(importStage === "preview-ready" || importStage === "executing") && importPreview && (
         <div className="fixed inset-0 bg-black/30 flex items-center justify-center z-50 p-4">
@@ -837,7 +910,6 @@ export default function Dashboard() {
             <div className="p-6">
               <h2 className="text-base font-semibold text-gray-900 mb-5">Import Preview</h2>
 
-              {/* Mode selector */}
               <div className="mb-5 space-y-2.5">
                 <label className="flex items-start gap-2.5 cursor-pointer">
                   <input
@@ -867,7 +939,6 @@ export default function Dashboard() {
                 </label>
               </div>
 
-              {/* Summary */}
               <div className="border border-gray-100 rounded-md divide-y divide-gray-100 mb-4 text-sm">
                 {[
                   ["Creators to create", importPreview.creatorsToCreate],
@@ -906,7 +977,6 @@ export default function Dashboard() {
                 )}
               </div>
 
-              {/* Errors */}
               {importPreview.errors.length > 0 && (
                 <div className="mb-4 bg-red-50 border border-red-100 rounded-md p-3 text-xs text-red-700 space-y-1 max-h-32 overflow-y-auto">
                   {importPreview.errors.map((e, i) => <p key={i}>{e}</p>)}

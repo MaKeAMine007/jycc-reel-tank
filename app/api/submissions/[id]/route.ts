@@ -5,11 +5,12 @@ export async function PATCH(
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id } = await params;
-  const body = await request.json() as { remarks: string };
+  const body = await request.json() as { remarks: string; verificationStatus?: string };
 
   await sql`
     UPDATE submissions
-    SET remarks = ${body.remarks ?? ""}
+    SET remarks = ${body.remarks ?? ""},
+        verification_status = ${body.verificationStatus ?? "-"}
     WHERE id = ${id}
   `;
 

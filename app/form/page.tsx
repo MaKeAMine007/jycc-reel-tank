@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import PublicNavbar from "@/app/components/PublicNavbar";
+import { WEEK_TOPICS } from "@/app/lib/weekTopics";
 
 type Gender = "Male" | "Female" | "Other" | "";
 
@@ -446,35 +447,56 @@ export default function FormPage() {
               <h2 className="text-sm font-semibold text-gray-800 mb-1">Instagram Reel Links</h2>
               <p className="text-xs text-gray-400 mb-4">Add at least one public Instagram Reel URL.</p>
 
-              {/* Week selector */}
+              {/* Week selector — topic cards */}
               <div className="mb-4">
-                <label className="block text-sm font-medium text-gray-700 mb-1">
+                <label className="block text-sm font-medium text-gray-700 mb-2">
                   Select Week <span className="text-red-500">*</span>
                 </label>
-                <select
-                  value={form.week ?? ""}
-                  onChange={(e) => setForm((f) => ({ ...f, week: e.target.value ? Number(e.target.value) : null }))}
-                  className={`w-full border rounded-md px-3 py-2.5 text-sm focus:outline-none focus:ring-1 bg-white ${
-                    errors.week
-                      ? "border-red-400 focus:border-red-400 focus:ring-red-200 text-gray-900"
-                      : "border-gray-300 focus:border-gray-500 focus:ring-gray-200"
-                  } ${form.week === null ? "text-gray-400" : "text-gray-900"}`}
-                >
-                  <option value="" disabled>Select a week</option>
+                <div className={`space-y-2 ${errors.week ? "ring-1 ring-red-300 rounded-md" : ""}`}>
                   {[1, 2, 3, 4, 5].map((w) => {
                     const isOpen     = openWeeks === null || openWeeks.includes(w);
                     const isOccupied = occupiedWeeks.includes(w);
                     const hasWeek1   = occupiedWeeks.includes(1);
                     const needsWeek1 = w > 1 && verifyStatus !== "idle" && !hasWeek1;
                     const isDisabled = !isOpen || isOccupied || needsWeek1;
-                    const label      = isOccupied ? `Week ${w} 🔒` : !isOpen ? `Week ${w} (closed)` : `Week ${w}`;
+                    const isSelected = form.week === w;
+                    const topic      = WEEK_TOPICS[w];
                     return (
-                      <option key={w} value={w} disabled={isDisabled}>
-                        {label}
-                      </option>
+                      <button
+                        key={w}
+                        type="button"
+                        disabled={isDisabled}
+                        onClick={() => {
+                          if (!isDisabled) setForm((f) => ({ ...f, week: w }));
+                        }}
+                        className={`w-full text-left p-3 rounded-md border transition-colors ${
+                          isSelected
+                            ? "border-gray-800 bg-gray-50"
+                            : isDisabled
+                              ? "border-gray-100 bg-gray-50 opacity-50 cursor-not-allowed"
+                              : "border-gray-200 bg-white hover:border-gray-300 cursor-pointer"
+                        }`}
+                      >
+                        <div className="flex items-start justify-between gap-2">
+                          <div className="flex-1 min-w-0">
+                            <p className={`text-sm font-medium ${isDisabled ? "text-gray-400" : "text-gray-900"}`}>
+                              {topic ? topic.title : `Week ${w}`}
+                              {isOccupied ? " 🔒" : !isOpen ? " (closed)" : ""}
+                            </p>
+                            {topic && isOpen && !isOccupied && (
+                              <p className="text-xs text-gray-500 mt-0.5 leading-relaxed">
+                                {topic.description}
+                              </p>
+                            )}
+                          </div>
+                          {isSelected && (
+                            <span className="shrink-0 text-xs font-semibold text-gray-700 mt-0.5">✓</span>
+                          )}
+                        </div>
+                      </button>
                     );
                   })}
-                </select>
+                </div>
                 {errors.week && <p className="text-xs text-red-500 mt-1">{errors.week}</p>}
                 {verifyStatus !== "idle" && !occupiedWeeks.includes(1) && (openWeeks === null || openWeeks.some((w) => w > 1)) && (
                   <p className="text-xs text-red-500 mt-1">
