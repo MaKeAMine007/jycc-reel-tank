@@ -142,14 +142,16 @@ function csvField(value: string): string {
 export default function SuperAdminDashboard() {
   const router = useRouter();
   const [creators, setCreators]             = useState<Creator[]>([]);
-  const [reelMarks, setReelMarks]           = useState<Record<string, string>>({});
-  const [creatorRemarks, setCreatorRemarks] = useState<Record<string, string>>({});
-  const [creatorVerificationStatus, setCreatorVerificationStatus]   = useState<Record<string, string>>({});
-  const [creatorSaved, setCreatorSaved]     = useState<Record<string, boolean>>({});
-  const [openWeeks, setOpenWeeks]           = useState<Record<string, Set<number>>>({});
-  const [authed, setAuthed]                 = useState(false);
-  const [deleteTarget, setDeleteTarget]     = useState<{ phone: string; name: string } | null>(null);
-  const [deleteLoading, setDeleteLoading]   = useState(false);
+  const [reelMarks, setReelMarks]                     = useState<Record<string, string>>({});
+  const [creatorRemarks, setCreatorRemarks]           = useState<Record<string, string>>({});
+  const [reelVerificationStatus, setReelVerificationStatus] = useState<Record<string, string>>({});
+  const [creatorSaved, setCreatorSaved]               = useState<Record<string, boolean>>({});
+  const [openWeeks, setOpenWeeks]                     = useState<Record<string, Set<number>>>({});
+  const [authed, setAuthed]                           = useState(false);
+  const [deleteTarget, setDeleteTarget]               = useState<{ phone: string; name: string } | null>(null);
+  const [deleteLoading, setDeleteLoading]             = useState(false);
+  const [deleteReelTarget, setDeleteReelTarget]       = useState<{ reelId: string; submissionId: string } | null>(null);
+  const [deleteReelLoading, setDeleteReelLoading]     = useState(false);
 
   // Import state
   const fileInputRef                             = useRef<HTMLInputElement>(null);
@@ -166,21 +168,23 @@ export default function SuperAdminDashboard() {
     const data = (await res.json()) as Creator[];
     setCreators(data);
 
-    const newReelMarks: Record<string, string>                = {};
-    const newCreatorRemarks: Record<string, string>           = {};
-    const newCreatorVerificationStatus: Record<string, string> = {};
+    const newReelMarks: Record<string, string>              = {};
+    const newCreatorRemarks: Record<string, string>         = {};
+    const newReelVerificationStatus: Record<string, string> = {};
 
     for (const creator of data) {
       newCreatorRemarks[creator.phone] = creator.remarks ?? "";
-      newCreatorVerificationStatus[creator.phone] = creator.verificationStatus ?? "-";
       for (const reel of creator.reels) {
-        if (reel.id) newReelMarks[reel.id] = String(reel.marks ?? 0);
+        if (reel.id) {
+          newReelMarks[reel.id] = String(reel.marks ?? 0);
+          newReelVerificationStatus[reel.id] = reel.verificationStatus ?? "-";
+        }
       }
     }
 
     setReelMarks(newReelMarks);
     setCreatorRemarks(newCreatorRemarks);
-    setCreatorVerificationStatus(newCreatorVerificationStatus);
+    setReelVerificationStatus(newReelVerificationStatus);
     setCreatorSaved({});
   }
 
@@ -470,14 +474,42 @@ export default function SuperAdminDashboard() {
 
   async function handleCreatorSave(phone: string, firstSubmissionId: string) {
     const remarks = (creatorRemarks[phone] ?? "").trim();
-    const verificationStatus = creatorVerificationStatus[phone] ?? "-";
-    await fetch(`/api/submissions/${firstSubmissionId}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ remarks, verificationStatus }),
-    });
+    const creatorReels = creators.find((c) => c.phone === phone)?.reels ?? [];
+
+    await Promise.all([
+      fetch(`/api/submissions/${firstSubmissionId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ remarks }),
+      }),
+      ...creatorReels
+        .filter((r) => r.id && r.submissionId)
+        .map((r) =>
+          fetch(`/api/submissions/${r.submissionId}/reels/${r.id}`, {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ verificationStatus: reelVerificationStatus[r.id!] ?? "-" }),
+          })
+        ),
+    ]);
+
     setCreatorSaved((prev) => ({ ...prev, [phone]: true }));
     setTimeout(() => setCreatorSaved((prev) => ({ ...prev, [phone]: false })), 1500);
+  }
+
+  async function confirmDeleteReel() {
+    if (!deleteReelTarget || deleteReelLoading) return;
+    setDeleteReelLoading(true);
+    try {
+      await fetch(
+        `/api/submissions/${deleteReelTarget.submissionId}/reels/${deleteReelTarget.reelId}`,
+        { method: "DELETE" }
+      );
+      setDeleteReelTarget(null);
+      await reload();
+    } finally {
+      setDeleteReelLoading(false);
+    }
   }
 
   async function confirmDelete() {
@@ -585,7 +617,6 @@ export default function SuperAdminDashboard() {
                     <th className={thClass} style={{ minWidth: "80px" }}>Comments</th>
                     <th className={thClass} style={{ minWidth: "64px" }}>Marks</th>
                     <th className={thClass} style={{ minWidth: "168px" }}>Remarks</th>
-                    <th className={thClass} style={{ minWidth: "128px" }}>Status</th>
                     <th className={thClass}></th>
                     <th className={thClass}></th>
                   </tr>
@@ -666,19 +697,6 @@ export default function SuperAdminDashboard() {
                               className="border border-gray-300 rounded px-2 py-1 text-xs text-gray-900 placeholder-gray-400 focus:outline-none focus:border-gray-500"
                             />
                           </td>
-                          <td className="px-4 py-3 whitespace-nowrap" style={{ minWidth: "128px" }}>
-                            <select
-                              value={creatorVerificationStatus[phone] ?? "-"}
-                              onChange={(e) =>
-                                setCreatorVerificationStatus((prev) => ({ ...prev, [phone]: e.target.value }))
-                              }
-                              className="border border-gray-300 rounded px-2 py-1 text-xs text-gray-900 focus:outline-none focus:border-gray-500 bg-white"
-                            >
-                              <option value="-">-</option>
-                              <option value="Verified">Verified</option>
-                              <option value="Unverified">Unverified</option>
-                            </select>
-                          </td>
                           <td className="px-4 py-3 whitespace-nowrap">
                             <button
                               onClick={() => handleCreatorSave(phone, creator.firstSubmissionId)}
@@ -711,7 +729,7 @@ export default function SuperAdminDashboard() {
                           const wComments    = sumMetric(weekReels, "comments");
                           return (
                             <tr key={`${phone}-w${week}`}>
-                              <td colSpan={15} className="p-0">
+                              <td colSpan={14} className="p-0">
 
                                 {/* Week label */}
                                 <div className="px-6 py-2 bg-gray-50 border-y border-gray-100 flex items-center gap-2 flex-wrap">
@@ -776,6 +794,8 @@ export default function SuperAdminDashboard() {
                                       <th className="px-4 py-2 text-xs font-semibold text-gray-400 uppercase tracking-wider">Comments</th>
                                       <th className="px-4 py-2 text-xs font-semibold text-gray-400 uppercase tracking-wider">Reel URL</th>
                                       <th className="px-4 py-2 text-xs font-semibold text-gray-400 uppercase tracking-wider">Marks</th>
+                                      <th className="px-4 py-2 text-xs font-semibold text-gray-400 uppercase tracking-wider" style={{ minWidth: "128px" }}>Verification</th>
+                                      <th className="px-4 py-2 text-xs font-semibold text-gray-400 uppercase tracking-wider"></th>
                                     </tr>
                                   </thead>
                                   <tbody className="divide-y divide-gray-100">
@@ -837,6 +857,29 @@ export default function SuperAdminDashboard() {
                                               className="w-16 border border-gray-300 rounded px-2 py-1 text-xs text-gray-900 focus:outline-none focus:border-gray-500"
                                             />
                                           </td>
+                                          <td className="px-4 py-3 whitespace-nowrap" style={{ minWidth: "128px" }}>
+                                            <select
+                                              value={reelVerificationStatus[reelId] ?? "-"}
+                                              onChange={(e) =>
+                                                setReelVerificationStatus((prev) => ({ ...prev, [reelId]: e.target.value }))
+                                              }
+                                              className="border border-gray-300 rounded px-2 py-1 text-xs text-gray-900 focus:outline-none focus:border-gray-500 bg-white"
+                                            >
+                                              <option value="-">-</option>
+                                              <option value="Verified">Verified</option>
+                                              <option value="Unverified">Unverified</option>
+                                            </select>
+                                          </td>
+                                          <td className="px-4 py-3 whitespace-nowrap">
+                                            <button
+                                              onClick={() =>
+                                                setDeleteReelTarget({ reelId, submissionId: reel.submissionId! })
+                                              }
+                                              className="text-xs font-medium px-3 py-1 rounded border border-red-200 text-red-600 bg-white hover:bg-red-50 transition-colors"
+                                            >
+                                              Delete
+                                            </button>
+                                          </td>
                                         </tr>
                                       );
                                     })}
@@ -857,6 +900,42 @@ export default function SuperAdminDashboard() {
           </div>
         )}
       </main>
+
+      {/* ── Reel delete confirmation modal ───────────────────────────────── */}
+      {deleteReelTarget && (
+        <div className="fixed inset-0 bg-black/30 flex items-center justify-center z-50 p-4">
+          <div className="bg-white border border-gray-200 rounded-lg shadow-lg w-full max-w-sm">
+            <div className="p-6">
+              <h2 className="text-base font-semibold text-gray-900 mb-3">Delete this reel?</h2>
+              <p className="text-sm text-gray-500 mb-6">This action cannot be undone.</p>
+              <div className="flex justify-end gap-2">
+                <button
+                  onClick={() => setDeleteReelTarget(null)}
+                  disabled={deleteReelLoading}
+                  className="text-sm font-medium text-gray-600 border border-gray-300 bg-white rounded-md px-4 py-2 hover:bg-gray-50 transition-colors disabled:opacity-40"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={confirmDeleteReel}
+                  disabled={deleteReelLoading}
+                  className="text-sm font-medium text-white bg-red-600 border border-red-600 rounded-md px-4 py-2 hover:bg-red-700 transition-colors disabled:opacity-40 flex items-center gap-2"
+                >
+                  {deleteReelLoading ? (
+                    <>
+                      <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24" fill="none">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                      </svg>
+                      Deleting…
+                    </>
+                  ) : "Delete"}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ── Delete confirmation modal ─────────────────────────────────────── */}
       {deleteTarget && (

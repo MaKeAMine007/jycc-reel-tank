@@ -143,10 +143,10 @@ function csvField(value: string): string {
 export default function Dashboard() {
   const router = useRouter();
   const [creators, setCreators]             = useState<Creator[]>([]);
-  const [reelMarks, setReelMarks]           = useState<Record<string, string>>({});
-  const [creatorRemarks, setCreatorRemarks]                         = useState<Record<string, string>>({});
-  const [creatorVerificationStatus, setCreatorVerificationStatus]   = useState<Record<string, string>>({});
-  const [creatorSaved, setCreatorSaved]                             = useState<Record<string, boolean>>({});
+  const [reelMarks, setReelMarks]                           = useState<Record<string, string>>({});
+  const [creatorRemarks, setCreatorRemarks]                 = useState<Record<string, string>>({});
+  const [reelVerificationStatus, setReelVerificationStatus] = useState<Record<string, string>>({});
+  const [creatorSaved, setCreatorSaved]                     = useState<Record<string, boolean>>({});
   const [openWeeks, setOpenWeeks]           = useState<Record<string, Set<number>>>({});
   const [authed, setAuthed]                 = useState(false);
 
@@ -165,21 +165,23 @@ export default function Dashboard() {
     const data = (await res.json()) as Creator[];
     setCreators(data);
 
-    const newReelMarks: Record<string, string>                = {};
-    const newCreatorRemarks: Record<string, string>           = {};
-    const newCreatorVerificationStatus: Record<string, string> = {};
+    const newReelMarks: Record<string, string>              = {};
+    const newCreatorRemarks: Record<string, string>         = {};
+    const newReelVerificationStatus: Record<string, string> = {};
 
     for (const creator of data) {
       newCreatorRemarks[creator.phone] = creator.remarks ?? "";
-      newCreatorVerificationStatus[creator.phone] = creator.verificationStatus ?? "-";
       for (const reel of creator.reels) {
-        if (reel.id) newReelMarks[reel.id] = String(reel.marks ?? 0);
+        if (reel.id) {
+          newReelMarks[reel.id] = String(reel.marks ?? 0);
+          newReelVerificationStatus[reel.id] = reel.verificationStatus ?? "-";
+        }
       }
     }
 
     setReelMarks(newReelMarks);
     setCreatorRemarks(newCreatorRemarks);
-    setCreatorVerificationStatus(newCreatorVerificationStatus);
+    setReelVerificationStatus(newReelVerificationStatus);
     setCreatorSaved({});
   }
 
@@ -471,12 +473,25 @@ export default function Dashboard() {
 
   async function handleCreatorSave(phone: string, firstSubmissionId: string) {
     const remarks = (creatorRemarks[phone] ?? "").trim();
-    const verificationStatus = creatorVerificationStatus[phone] ?? "-";
-    await fetch(`/api/submissions/${firstSubmissionId}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ remarks, verificationStatus }),
-    });
+    const creatorReels = creators.find((c) => c.phone === phone)?.reels ?? [];
+
+    await Promise.all([
+      fetch(`/api/submissions/${firstSubmissionId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ remarks }),
+      }),
+      ...creatorReels
+        .filter((r) => r.id && r.submissionId)
+        .map((r) =>
+          fetch(`/api/submissions/${r.submissionId}/reels/${r.id}`, {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ verificationStatus: reelVerificationStatus[r.id!] ?? "-" }),
+          })
+        ),
+    ]);
+
     setCreatorSaved((prev) => ({ ...prev, [phone]: true }));
     setTimeout(() => setCreatorSaved((prev) => ({ ...prev, [phone]: false })), 1500);
   }
@@ -566,7 +581,6 @@ export default function Dashboard() {
                     <th className={thClass} style={{ minWidth: "80px" }}>Comments</th>
                     <th className={thClass} style={{ minWidth: "64px" }}>Marks</th>
                     <th className={thClass} style={{ minWidth: "168px" }}>Remarks</th>
-                    <th className={thClass} style={{ minWidth: "128px" }}>Status</th>
                     <th className={thClass}></th>
                   </tr>
                 </thead>
@@ -646,19 +660,6 @@ export default function Dashboard() {
                               className="border border-gray-300 rounded px-2 py-1 text-xs text-gray-900 placeholder-gray-400 focus:outline-none focus:border-gray-500"
                             />
                           </td>
-                          <td className="px-4 py-3 whitespace-nowrap" style={{ minWidth: "128px" }}>
-                            <select
-                              value={creatorVerificationStatus[phone] ?? "-"}
-                              onChange={(e) =>
-                                setCreatorVerificationStatus((prev) => ({ ...prev, [phone]: e.target.value }))
-                              }
-                              className="border border-gray-300 rounded px-2 py-1 text-xs text-gray-900 focus:outline-none focus:border-gray-500 bg-white"
-                            >
-                              <option value="-">-</option>
-                              <option value="Verified">Verified</option>
-                              <option value="Unverified">Unverified</option>
-                            </select>
-                          </td>
                           <td className="px-4 py-3 whitespace-nowrap">
                             <button
                               onClick={() => handleCreatorSave(phone, creator.firstSubmissionId)}
@@ -683,7 +684,7 @@ export default function Dashboard() {
                           const wComments    = sumMetric(weekReels, "comments");
                           return (
                             <tr key={`${phone}-w${week}`}>
-                              <td colSpan={14} className="p-0">
+                              <td colSpan={13} className="p-0">
 
                                 {/* Week label */}
                                 <div className="px-6 py-2 bg-gray-50 border-y border-gray-100 flex items-center gap-2 flex-wrap">
@@ -748,6 +749,7 @@ export default function Dashboard() {
                                       <th className="px-4 py-2 text-xs font-semibold text-gray-400 uppercase tracking-wider">Comments</th>
                                       <th className="px-4 py-2 text-xs font-semibold text-gray-400 uppercase tracking-wider">Reel URL</th>
                                       <th className="px-4 py-2 text-xs font-semibold text-gray-400 uppercase tracking-wider">Marks</th>
+                                      <th className="px-4 py-2 text-xs font-semibold text-gray-400 uppercase tracking-wider" style={{ minWidth: "128px" }}>Verification</th>
                                     </tr>
                                   </thead>
                                   <tbody className="divide-y divide-gray-100">
@@ -808,6 +810,19 @@ export default function Dashboard() {
                                               onBlur={() => handleReelMarkBlur(reelId, reel.submissionId!)}
                                               className="w-16 border border-gray-300 rounded px-2 py-1 text-xs text-gray-900 focus:outline-none focus:border-gray-500"
                                             />
+                                          </td>
+                                          <td className="px-4 py-3 whitespace-nowrap" style={{ minWidth: "128px" }}>
+                                            <select
+                                              value={reelVerificationStatus[reelId] ?? "-"}
+                                              onChange={(e) =>
+                                                setReelVerificationStatus((prev) => ({ ...prev, [reelId]: e.target.value }))
+                                              }
+                                              className="border border-gray-300 rounded px-2 py-1 text-xs text-gray-900 focus:outline-none focus:border-gray-500 bg-white"
+                                            >
+                                              <option value="-">-</option>
+                                              <option value="Verified">Verified</option>
+                                              <option value="Unverified">Unverified</option>
+                                            </select>
                                           </td>
                                         </tr>
                                       );

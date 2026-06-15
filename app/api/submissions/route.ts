@@ -28,7 +28,8 @@ export async function GET() {
       r.marks,
       r.remarks,
       r.reel_index,
-      r.week
+      r.week,
+      r.verification_status AS reel_verification_status
     FROM submissions s
     LEFT JOIN reels r ON r.submission_id = s.id
     ORDER BY s.submitted_at ASC, r.reel_index ASC
@@ -91,6 +92,7 @@ export async function GET() {
         remarks: row.remarks ?? "",
         week: row.week ?? 1,
         submittedAt: row.submitted_at ?? null,
+        verificationStatus: row.reel_verification_status ?? "-",
       });
     }
   }

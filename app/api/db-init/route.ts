@@ -44,6 +44,7 @@ export async function GET() {
   await sql`ALTER TABLE submissions ADD COLUMN IF NOT EXISTS source TEXT NOT NULL DEFAULT 'form'`;
   await sql`ALTER TABLE submissions ADD COLUMN IF NOT EXISTS in_latest_csv BOOLEAN NOT NULL DEFAULT false`;
   await sql`ALTER TABLE submissions ADD COLUMN IF NOT EXISTS verification_status TEXT NOT NULL DEFAULT '-'`;
+  await sql`ALTER TABLE reels ADD COLUMN IF NOT EXISTS verification_status TEXT NOT NULL DEFAULT '-'`;
 
   await sql`
     CREATE TABLE IF NOT EXISTS campaign_settings (
